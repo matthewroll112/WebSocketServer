@@ -172,10 +172,70 @@ async function removeGame(id){
     }
 }
 
+//Function to update player scores
+async function updateScore(id, name, score){
+    const client = new MongoClient(uri);
+
+    try{
+        client.connect();
+        const db = client.db(dbName);
+        const collection = db.collection('games');
+
+        const update = {$set: {[`players.${name}.score`]: score}};
+
+        await collection.updateOne({_id : id}, update);
+        console.log(`${name} score updated to ${score}`);
+    }
+    catch(error){
+        console.log('Error updating score:', error);
+        throw error;
+    }
+    finally{
+        await client.close();
+    }
+}
+
+async function getPlayerScores(id){
+    const client = new MongoClient(uri);
+
+    try{
+        client.connect();
+        const db = client.db(dbName);
+        const collection = db.collection('games');
+
+        const game = await collection.findOne({_id : id});
+
+        if(!game){
+            console.log(`Game ${id} not found`);
+            return null;
+        }
+
+        //Get player scores and return
+        const playerScores = [];
+        for(const [playerName, playerData] of Object.entries(game.players)) {
+            playerScores.push({
+                playerName : playerName,
+                score : playerData.score
+            });
+        }
+
+        return playerScores;
+    }
+    catch(error){
+        console.log('Error retrieving scores', error);
+        throw error;
+    }
+    finally{
+        await client.close();
+    }
+}
+
 module.exports = {
     createGame,
     addPlayer,
     getPlayers,
     removePlayer,
-    removeGame
+    removeGame,
+    updateScore,
+    getPlayerScores
 };

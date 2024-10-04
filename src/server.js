@@ -1,5 +1,5 @@
 const WebSocket = require('ws');
-const {createGame, addPlayer, removePlayer, removeGame} = require('./database');
+const {createGame, addPlayer, removePlayer, removeGame, updateScore, getPlayerScores} = require('./database');
 
 const PORT = 8080;
 const ws = new WebSocket.Server({port: PORT});
@@ -11,11 +11,15 @@ const lobbies = new Map();
 //Function to send players in lobby to each person in lobby
 async function sendLobbyPlayerUpdate(id){
     if(lobbies.has(id)){
+
         //Get player names, format message
         const players = [];
-        lobbies.get(id).forEach(({playerName}) => {
+        const sockets = [];
+
+        lobbies.get(id).players.forEach(({playerName, socket}) => {
             players.push(playerName);
-        })
+            sockets.push(socket);
+        });
         const message = {
             status : 'playerUpdate',
             host : players[0],
@@ -23,10 +27,79 @@ async function sendLobbyPlayerUpdate(id){
         }
 
         //Send message to all sockets in lobby
-        lobbies.get(id).forEach(({socket}) => {
+        sockets.forEach((socket) => {
             socket.send(JSON.stringify(message));
-        })
+        });
     }
+}
+
+async function sendLobbyScoreUpdate(id) {
+    if (lobbies.has(id)) {
+        try {
+            // Get scores from db
+            const result = await getPlayerScores(id);
+
+            if (!result) {
+                return;
+            }
+
+            // Add all player names and scores to different lists
+            const players = [];
+            const scores = [];
+            result.forEach(({ playerName, score }) => {
+                players.push(playerName);
+                scores.push(score);
+            });
+
+            // Get next player to spin
+            const lobby = lobbies.get(id);
+            const player = getNextPlayer(lobby);
+
+            // Ensure player is defined
+            if (!player) {
+                console.log("No player to spin.");
+                return;
+            }
+
+            // Format message
+            const message = {
+                status: 'gameUpdate',
+                turn: player.playerName,
+                players: players,
+                scores: scores
+            };
+
+            lobby.players.forEach(({ socket }) => {
+                socket.send(JSON.stringify(message));
+            });
+
+            //Set all players to have not answered
+            //Set player to has answered in map
+            players.players.forEach(player => {
+                player.hasAnswered = false;
+            });
+
+            // Increment turn index for the next player
+            lobby.turnIndex += 1;
+
+        } catch (error) {
+            console.log('Error sending lobby score update:', error);
+        }
+    }
+}
+
+function getNextPlayer(lobby) {
+    const players = lobby.players;
+
+    // Ensure there are players in the lobby
+    if (players.length === 0) {
+        console.log("No players in lobby.");
+        return null;
+    }
+
+    const nextIndex = lobby.turnIndex % players.length;
+    console.log(nextIndex);
+    return players[nextIndex];
 }
 
 //When client connects
@@ -55,13 +128,16 @@ ws.on('connection', (socket) => {
                 //Use database method to create game
                 const result = await createGame(host);
 
+                const id = result._id
                 //Store socket in map for later use
-                const id = result._id;
                 if(!lobbies.has(id)){
-                    lobbies.set(id, new Set());
+                    lobbies.set(id, {
+                        players : [],
+                        turnIndex : 0
+                });
                 }
                 const playerName = host.name
-                lobbies.get(id).add({socket, playerName});
+                lobbies.get(id).players.push({socket, playerName, hasAnswered : false});
 
                 //Send back response
                 socket.send(JSON.stringify({status : 'success', gameId: id}));
@@ -74,9 +150,8 @@ ws.on('connection', (socket) => {
                 socket.send(JSON.stringify({status:'error', message : "failed to create game"}));
             }
         }
-
         //Handling add player command
-        if(data.command === 'addPlayer'){
+        else if(data.command === 'addPlayer'){
             //Get player data
             const gameId = data.data.id;
             const player = data.data.player;
@@ -86,10 +161,13 @@ ws.on('connection', (socket) => {
 
                 //Store socket in map for later use
                 if(!lobbies.has(gameId)){
-                    lobbies.set(gameId, new Set());
+                    lobbies.set(gameId, {
+                        players : [],
+                        turnIndex : 0
+                });
                 }
                 const playerName = player.name
-                lobbies.get(gameId).add({socket, playerName});
+                lobbies.get(gameId).players.push({socket, playerName, hasAnswered : false});
 
                 //Send back response
                 socket.send(JSON.stringify({status : 'success', playerAdded : gameId}));
@@ -102,61 +180,125 @@ ws.on('connection', (socket) => {
                 socket.send(JSON.stringify({status: 'error', message: "Failed to add player"}));
             }
         }
-
         //Handling remove player command
-        if(data.command === 'removePlayer'){
+        else if(data.command === 'removePlayer'){
             const gameId = data.data.id;
             const playerName = data.data.player;
-        
+
             try {
                 await removePlayer(gameId, playerName);
-        
+
                 //Find lobby
                 const lobby = lobbies.get(gameId);
                 if (!lobby) {
                     socket.send(JSON.stringify({status: 'error', message: 'Lobby not found'}));
                     return;
                 }
-        
+
                 //Find player to be removed
-                let removedPlayer = null;
-                lobby.forEach(({socket, playerName: name}) => {
-                    if (name === playerName) {
-                        removedPlayer = socket;
-                    }
-                });
-        
-                if (removedPlayer) {
-                    //Notify player that they've been kicked
+                const playerIndex = lobby.players.findIndex(entry => entry.playerName === playerName);
+                if (playerIndex !== -1) {
+                    const removedPlayer = lobby.players[playerIndex].socket;
+
+                    //Notify the player that they've been kicked
                     removedPlayer.send(JSON.stringify({status: "kicked"}));
-                    
-                    //Remove player
-                    lobby.forEach((entry) => {
-                        if (entry.playerName === playerName) {
-                            lobby.delete(entry);
-                        }
-                    });
-        
-                    //If the lobby is now empty, clean it up
-                    if (lobby.size === 0) {
-                        console.log(`Game ${gameId} empty. Removing from db.`)
+
+                    //Remove player from the array
+                    lobby.splice(playerIndex, 1);
+
+                    //Adjust current turn index if necessary
+                    if (playerIndex === lobby.currentTurnIndex) {
+                        lobby.currentTurnIndex = (lobby.currentTurnIndex - 1 + lobby.players.length) % lobby.players.length;
+                    }
+
+                    //If the lobby is now empty, remove it
+                    if (lobby.players.length === 0) {
+                        console.log(`Game ${gameId} empty. Removing from db.`);
                         await removeGame(gameId);
                         lobbies.delete(gameId);
                     }
-        
-                    // Notify the player who sent the remove command
+
+                    //Notify the player who sent the remove command
                     socket.send(JSON.stringify({status: 'success', message: `${playerName} removed from lobby`}));
-        
-                    // Send lobby update to all remaining players
+
+                    //Send lobby update to all remaining players
                     sendLobbyPlayerUpdate(gameId);
                 } else {
                     socket.send(JSON.stringify({status: 'error', message: 'Player not found in lobby'}));
                 }
-        
-            } catch (error) {
+
+            } 
+            catch (error) {
                 console.log('Error removing player:', error);
                 socket.send(JSON.stringify({status: 'error', message: 'Failed to remove player'}));
             }
+        }
+        //Handling score updates
+        else if(data.command === "scoreUpdate"){
+            const gameId = data.data.id;
+            const playerName = data.data.player;
+            
+            //Find lobby player is in
+            const players = lobbies.get(gameId);
+            if(!players){
+                //Lobby not found, send error
+                socket.send(JSON.stringify({status : "error", message : "Lobby not found"}));
+                return;
+            }
+
+            //If score has been updated, make change in database
+            if(data?.data?.score){
+                const score = data.data.score;
+                await updateScore(gameId, playerName, score);
+            }
+
+            //Set player to has answered in map
+            players.players.forEach(player => {
+                if(player.playerName === playerName){
+                    player.hasAnswered = true;
+                }
+            });
+
+            //Check if all players have answered
+            const allAnswered = players.players.every(player => player.hasAnswered);
+            if(allAnswered){
+                //All players have answered, broadcast scoreUpdate to all players
+                sendLobbyScoreUpdate(gameId);
+            }
+        }
+        //Handling broadcast of letter to all players in game
+        else if(data.command === "broadcastLetter"){
+            const gameId = data.data.id;
+            const letter = data.data.letter;
+            const isLast = data.data.lastQuestion;
+
+            //Broadcast letter to all players in game
+            if(lobbies.has(gameId)){
+                //Format message
+                const message = {
+                    status : 'letter',
+                    letter : letter,
+                    lastQuestion: isLast
+                }
+        
+                lobbies.get(gameId).players.forEach(({socket}) => {
+                    socket.send(JSON.stringify(message));
+                });
+            }
+        }
+        //Handling of starting game
+        else if(data.command === "startGame"){
+            const gameId = data.data.id;
+
+            //Broadcast game start to all players in game
+            if(lobbies.has(gameId)){
+                lobbies.get(gameId).players.forEach(({socket}) => {
+                    socket.send(JSON.stringify({status : "startGame"}));
+                })
+            }
+
+            //Broadcast score update
+            sendLobbyScoreUpdate(gameId);
         }
     });
 
@@ -165,50 +307,52 @@ ws.on('connection', (socket) => {
         console.log('Client disconnected, removing from game');
 
         //Find lobby player was a part of
-        for(const [gameId, players] of lobbies.entries()){
+        for (const [gameId, lobby] of lobbies.entries()) {
             let disconnectedPlayer = null;
 
             //Find disconnected player
-            for (const {playerName, socket : playerSocket} of players){
-                if(playerSocket === socket){
+            for (const { playerName, socket: playerSocket } of lobby.players) {
+                if (playerSocket === socket) {
                     disconnectedPlayer = playerName;
                     break;
                 }
             }
 
-            if(disconnectedPlayer){
-                //REmove player from db
-                try{
+            if (disconnectedPlayer) {
+                //REmove player from DB
+                try {
                     await removePlayer(gameId, disconnectedPlayer);
-                }
-                catch(error){
+                } catch (error) {
                     console.error(`Error removing ${disconnectedPlayer} from game ${gameId}`);
                 }
 
-                // Remove player from the map
-                players.forEach((entry) => {
-                    if (entry.socket === socket) {
-                        players.delete(entry);
+                //Remove player from the array
+                const playerIndex = lobby.players.findIndex(entry => entry.socket === socket);
+                if (playerIndex !== -1) {
+                    //Check if the removed player was the current turn player
+                    if (playerIndex === lobby.currentTurnIndex) {
+                        //Adjust current turn index
+                        lobby.currentTurnIndex = (lobby.currentTurnIndex - 1 + lobby.players.length) % lobby.players.length;
                     }
-                });
+                    lobby.players.splice(playerIndex, 1);
+                }
 
                 //If no players left, remove game from db
-                if(players.size === 0){
-                    try{
+                if (lobby.players.length === 0) {
+                    try {
                         console.log(`Game ${gameId} is empty. Removing from db`);
                         await removeGame(gameId);
                         lobbies.delete(gameId);
-                    }
-                    catch(error){
+                    } catch (error) {
                         console.error(`Error removing game ${gameId} from db`);
                     }
-                }
+                } 
                 else{
                     //Update remaining players on changes
                     await sendLobbyPlayerUpdate(gameId);
+                    await sendLobbyScoreUpdate(gameId);
                 }
             }
         }
-        
     });
 });

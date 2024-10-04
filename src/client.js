@@ -7,7 +7,7 @@ socket.onopen = () => {
     console.log('Connected to web server');
 
     //Sending add player
-    command = {command : 'addPlayer', data : {id : "2154", player : {
+    command = {command : 'addPlayer', data : {id : "3619", player : {
         name : "player",
         data : {
             score : 0,
