@@ -1,0 +1,3 @@
+- Make sure ip is MongoDB
+- run 'npm start' in terminal in root directory
+- change ip in WebSocketManager class in android to ip of device server is running on

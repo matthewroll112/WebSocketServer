@@ -51,12 +51,17 @@ async function sendLobbyScoreUpdate(id) {
                 scores.push(score);
             });
 
-            // Get next player to spin
+            //Get current lobby
             const lobby = lobbies.get(id);
-            const player = getNextPlayer(lobby);
+
+            //Get next player to spin
+            if(lobby.turnIndex >= lobby.players.length){
+                lobby.turnIndex = 0;
+            }
+            const nextPlayer = lobby.players[lobby.turnIndex];
 
             // Ensure player is defined
-            if (!player) {
+            if (!nextPlayer) {
                 console.log("No player to spin.");
                 return;
             }
@@ -64,7 +69,7 @@ async function sendLobbyScoreUpdate(id) {
             // Format message
             const message = {
                 status: 'gameUpdate',
-                turn: player.playerName,
+                turn: nextPlayer.playerName,
                 players: players,
                 scores: scores
             };
@@ -74,8 +79,7 @@ async function sendLobbyScoreUpdate(id) {
             });
 
             //Set all players to have not answered
-            //Set player to has answered in map
-            players.players.forEach(player => {
+            lobby.players.forEach(player => {
                 player.hasAnswered = false;
             });
 
@@ -86,20 +90,6 @@ async function sendLobbyScoreUpdate(id) {
             console.log('Error sending lobby score update:', error);
         }
     }
-}
-
-function getNextPlayer(lobby) {
-    const players = lobby.players;
-
-    // Ensure there are players in the lobby
-    if (players.length === 0) {
-        console.log("No players in lobby.");
-        return null;
-    }
-
-    const nextIndex = lobby.turnIndex % players.length;
-    console.log(nextIndex);
-    return players[nextIndex];
 }
 
 //When client connects
@@ -204,7 +194,7 @@ ws.on('connection', (socket) => {
                     removedPlayer.send(JSON.stringify({status: "kicked"}));
 
                     //Remove player from the array
-                    lobby.splice(playerIndex, 1);
+                    lobby.players.splice(playerIndex, 1);
 
                     //Adjust current turn index if necessary
                     if (playerIndex === lobby.currentTurnIndex) {
@@ -223,6 +213,7 @@ ws.on('connection', (socket) => {
 
                     //Send lobby update to all remaining players
                     sendLobbyPlayerUpdate(gameId);
+                    sendLobbyScoreUpdate(gameId);
                 } else {
                     socket.send(JSON.stringify({status: 'error', message: 'Player not found in lobby'}));
                 }
