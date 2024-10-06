@@ -95,6 +95,7 @@ async function sendLobbyScoreUpdate(id) {
 //When client connects
 ws.on('connection', (socket) => {
     console.log('Client connected');
+    socket.send(JSON.stringify({status : 'connected'}));
 
     //Listen for messages
     socket.on('message', async (message) => {
