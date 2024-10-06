@@ -262,6 +262,7 @@ ws.on('connection', (socket) => {
             const gameId = data.data.id;
             const letter = data.data.letter;
             const isLast = data.data.lastQuestion;
+            const index = data.data.index;
 
             //Broadcast letter to all players in game
             if(lobbies.has(gameId)){
@@ -269,7 +270,8 @@ ws.on('connection', (socket) => {
                 const message = {
                     status : 'letter',
                     letter : letter,
-                    lastQuestion: isLast
+                    lastQuestion: isLast,
+                    index : index
                 }
         
                 lobbies.get(gameId).players.forEach(({socket}) => {
