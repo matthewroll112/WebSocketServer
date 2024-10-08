@@ -1,5 +1,5 @@
 const WebSocket = require('ws');
-const {createGame, addPlayer, removePlayer, removeGame, updateScore, getPlayerScores, updateSettings} = require('./database');
+const {createGame, addPlayer, removePlayer, removeGame, updateScore, getPlayerScores, updateSettings, getGameSettings} = require('./database');
 
 const PORT = 8080;
 const ws = new WebSocket.Server({port: PORT});
@@ -267,12 +267,18 @@ ws.on('connection', (socket) => {
 
             //Broadcast letter to all players in game
             if(lobbies.has(gameId)){
+                //Get lobby settings
+                const gameSettings = await getGameSettings(gameId);
                 //Format message
                 const message = {
                     status : 'letter',
                     letter : letter,
                     lastQuestion: isLast,
-                    index : index
+                    index : index,
+                    hostPlays : gameSettings.host_plays,
+                    easy : gameSettings.easy_time,
+                    med : gameSettings.med_time,
+                    hard : gameSettings.hard_time
                 }
         
                 lobbies.get(gameId).players.forEach(({socket}) => {

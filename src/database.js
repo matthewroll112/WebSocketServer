@@ -259,6 +259,35 @@ async function updateSettings(gameId, newSettings){
     }
 }
 
+async function getGameSettings(gameId){
+    const client = new MongoClient(uri);
+
+    try{
+        await client.connect();
+        const db = client.db(dbName);
+        const collection = db.collection('games');
+
+        const game = await collection.findOne(
+            {_id: gameId},
+            {projection : {settings : 1}}
+        );
+
+        if(!game){
+            console.log('Game not found');
+            return null;
+        }
+
+        return game.settings;
+    }
+    catch(error){
+        console.log('Error retrieving game settings', error);
+        throw error;
+    }
+    finally{
+        await client.close();
+    }
+}
+
 module.exports = {
     createGame,
     addPlayer,
@@ -267,5 +296,6 @@ module.exports = {
     removeGame,
     updateScore,
     getPlayerScores,
-    updateSettings
+    updateSettings,
+    getGameSettings
 };
