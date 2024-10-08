@@ -230,6 +230,35 @@ async function getPlayerScores(id){
     }
 }
 
+async function updateSettings(gameId, newSettings){
+    const client = new MongoClient(uri);
+
+    try{
+        client.connect();
+        const db = client.db(dbName);
+        const collection = db.collection('games');
+
+        const result = await collection.updateOne(
+            {_id : gameId},
+            {$set : {settings:newSettings}}
+        );
+
+        if(result.modifiedCount > 0){
+            console.log("Settings updated");
+        }
+        else{
+            console.log("No settings updated");
+        }
+    }
+    catch(error){
+        console.log('Error updating settings', error);
+        throw error;
+    }
+    finally{
+        await client.close();
+    }
+}
+
 module.exports = {
     createGame,
     addPlayer,
@@ -237,5 +266,6 @@ module.exports = {
     removePlayer,
     removeGame,
     updateScore,
-    getPlayerScores
+    getPlayerScores,
+    updateSettings
 };

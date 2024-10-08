@@ -1,5 +1,5 @@
 const WebSocket = require('ws');
-const {createGame, addPlayer, removePlayer, removeGame, updateScore, getPlayerScores} = require('./database');
+const {createGame, addPlayer, removePlayer, removeGame, updateScore, getPlayerScores, updateSettings} = require('./database');
 
 const PORT = 8080;
 const ws = new WebSocket.Server({port: PORT});
@@ -293,6 +293,26 @@ ws.on('connection', (socket) => {
 
             //Broadcast score update
             sendLobbyScoreUpdate(gameId);
+        }
+        //Handling of updating settings
+        else if(data.command === "updateSettings"){
+            const gameId = data.data.id;
+            const host_plays = data.data.hostPlays;
+            const easy = data.data.easyTime;
+            const med = data.data.medTime;
+            const hard = data.data.hardTime;
+
+            try{
+               await updateSettings(gameId, {
+                host_plays : host_plays,
+                easy_time : easy,
+                med_time : med,
+                hard_time : hard
+                });
+            }
+            catch(error){
+                console.error("Error updating settings:", error);
+            }
         }
     });
 
