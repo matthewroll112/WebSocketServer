@@ -43,12 +43,23 @@ async function sendLobbyScoreUpdate(id) {
                 return;
             }
 
+            //Get if host is playing from database
+            const settings = await getGameSettings(id);
+            const hostPlays = gameSettings.host_plays;
+
             // Add all player names and scores to different lists
+            let flag = hostPlays;
             const players = [];
             const scores = [];
             result.forEach(({ playerName, score }) => {
-                players.push(playerName);
-                scores.push(score);
+                //Skip host if not playing
+                if(flag){
+                    players.push(playerName);
+                    scores.push(score);
+                }
+                else{
+                    flag = true;
+                }
             });
 
             //Get current lobby
@@ -58,6 +69,12 @@ async function sendLobbyScoreUpdate(id) {
             if(lobby.turnIndex >= lobby.players.length){
                 lobby.turnIndex = 0;
             }
+
+            //If host is not playing and the turn index is 0, set to 1
+            if(!hostPlays && lobby.turnIndex === 0){
+                lobby.turnIndex = 1;
+            }
+
             const nextPlayer = lobby.players[lobby.turnIndex];
 
             // Ensure player is defined
@@ -236,6 +253,15 @@ ws.on('connection', (socket) => {
                 //Lobby not found, send error
                 socket.send(JSON.stringify({status : "error", message : "Lobby not found"}));
                 return;
+            }
+
+            //Get if host is playing
+            const settings = await(getGameSettings(gameId));
+            const hostPlays = settings.host_plays;
+
+            //If host isn't playing, set has answered to true
+            if(!hostPlays){
+                players.players[0].hasAnswered = true;
             }
 
             //If score has been updated, make change in database
