@@ -318,8 +318,13 @@ ws.on('connection', (socket) => {
 
             //Broadcast game start to all players in game
             if(lobbies.has(gameId)){
+                //Get if host plays
+                const settings = await(getGameSettings(gameId));
+                const hostPlays = settings.host_plays;
+
+                //Send message to all players
                 lobbies.get(gameId).players.forEach(({socket}) => {
-                    socket.send(JSON.stringify({status : "startGame"}));
+                    socket.send(JSON.stringify({status : "startGame", hostPlays : hostPlays}));
                 })
             }
 
