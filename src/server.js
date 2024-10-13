@@ -45,7 +45,7 @@ async function sendLobbyScoreUpdate(id) {
 
             //Get if host is playing from database
             const settings = await getGameSettings(id);
-            const hostPlays = true;
+            let hostPlays = true;
             if(settings){
                 hostPlays = settings.host_plays;
             }
