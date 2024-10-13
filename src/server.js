@@ -354,6 +354,16 @@ ws.on('connection', (socket) => {
                 console.error("Error updating settings:", error);
             }
         }
+        //Handling game ending early
+        else if(data.command === "endGame"){
+            const gameId = data.data.id;
+
+            if(lobbies.has(gameId)){
+                lobbies.get(gameId).players.forEach(({socket}) => {
+                    socket.send(JSON.stringify({status : "endGame"}));
+                });
+            }
+        }
     });
 
     //Handling socket disconnection
