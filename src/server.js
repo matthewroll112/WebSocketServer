@@ -45,7 +45,10 @@ async function sendLobbyScoreUpdate(id) {
 
             //Get if host is playing from database
             const settings = await getGameSettings(id);
-            const hostPlays = settings.host_plays;
+            const hostPlays = true;
+            if(settings){
+                hostPlays = settings.host_plays;
+            }
 
             // Add all player names and scores to different lists
             let flag = hostPlays;
