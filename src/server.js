@@ -167,6 +167,10 @@ ws.on('connection', (socket) => {
             const gameId = data.data.id;
             const player = data.data.player;
 
+            if(!lobbies.has(gameId)){
+                socket.send(JSON.stringify({status : 'gameNotFound', id : gameId}));
+            }
+
             try{
                 await addPlayer(gameId, player);
 
