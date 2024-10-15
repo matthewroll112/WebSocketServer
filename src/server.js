@@ -169,6 +169,7 @@ ws.on('connection', (socket) => {
 
             if(!lobbies.has(gameId)){
                 socket.send(JSON.stringify({status : 'gameNotFound', id : gameId}));
+                return;
             }
 
             try{
